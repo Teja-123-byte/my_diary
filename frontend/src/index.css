@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* My Diary — Warm Pastel Playground design system.
+   All colors MUST be HSL. Define tokens, gradients, shadows here. */
+
+@layer base {
+  :root {
+    /* Base canvas — warm cream */
+    --background: 33 60% 97%;
+    --foreground: 25 35% 18%;
+
+    --card: 32 70% 99%;
+    --card-foreground: 25 35% 18%;
+
+    --popover: 32 70% 99%;
+    --popover-foreground: 25 35% 18%;
+
+    /* Coral primary */
+    --primary: 8 88% 68%;
+    --primary-foreground: 30 60% 98%;
+    --primary-glow: 18 95% 78%;
+
+    /* Lavender secondary */
+    --secondary: 268 70% 86%;
+    --secondary-foreground: 268 40% 25%;
+
+    /* Peach accent */
+    --accent: 28 95% 80%;
+    --accent-foreground: 18 50% 22%;
+
+    /* Mint tertiary */
+    --mint: 158 55% 78%;
+    --mint-foreground: 158 40% 20%;
+
+    /* Butter */
+    --butter: 46 95% 80%;
+    --butter-foreground: 35 50% 20%;
+
+    --muted: 30 30% 93%;
+    --muted-foreground: 25 15% 45%;
+
+    --destructive: 0 75% 62%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 28 40% 88%;
+    --input: 28 40% 88%;
+    --ring: 8 88% 68%;
+
+    --radius: 1.25rem;
+
+    /* Gradients */
+    --gradient-sky: radial-gradient(ellipse at top, hsl(28 95% 88%) 0%, hsl(33 60% 97%) 45%, hsl(268 60% 94%) 100%);
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 100%);
+    --gradient-pastel: linear-gradient(135deg, hsl(8 90% 80%) 0%, hsl(28 95% 82%) 35%, hsl(46 95% 80%) 70%, hsl(158 55% 80%) 100%);
+    --gradient-glass: linear-gradient(135deg, hsla(0,0%,100%,0.7) 0%, hsla(0,0%,100%,0.35) 100%);
+
+    /* Shadows */
+    --shadow-soft: 0 10px 40px -10px hsl(8 60% 60% / 0.25);
+    --shadow-pop: 0 20px 60px -15px hsl(8 80% 55% / 0.35);
+    --shadow-inner-glow: inset 0 1px 0 0 hsl(0 0% 100% / 0.6);
+
+    --transition-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+    --sidebar-background: 33 60% 97%;
+    --sidebar-foreground: 25 35% 18%;
+    --sidebar-primary: 8 88% 68%;
+    --sidebar-primary-foreground: 30 60% 98%;
+    --sidebar-accent: 28 95% 90%;
+    --sidebar-accent-foreground: 18 50% 22%;
+    --sidebar-border: 28 40% 88%;
+    --sidebar-ring: 8 88% 68%;
+  }
+
+  .dark {
+    --background: 25 30% 10%;
+    --foreground: 33 60% 96%;
+    --card: 25 30% 13%;
+    --card-foreground: 33 60% 96%;
+    --popover: 25 30% 13%;
+    --popover-foreground: 33 60% 96%;
+    --primary: 8 88% 68%;
+    --primary-foreground: 25 30% 10%;
+    --secondary: 268 30% 25%;
+    --secondary-foreground: 268 70% 90%;
+    --accent: 28 60% 30%;
+    --accent-foreground: 28 95% 88%;
+    --muted: 25 20% 20%;
+    --muted-foreground: 30 20% 70%;
+    --border: 25 20% 22%;
+    --input: 25 20% 22%;
+    --ring: 8 88% 68%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Quicksand', ui-rounded, 'Hiragino Maru Gothic ProN', system-ui, sans-serif;
+    background: var(--gradient-sky);
+    background-attachment: fixed;
+  }
+  h1, h2, h3, h4, .font-display {
+    font-family: 'Fraunces', ui-serif, Georgia, serif;
+    font-optical-sizing: auto;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--gradient-glass);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid hsl(0 0% 100% / 0.55);
+    box-shadow: var(--shadow-pop), var(--shadow-inner-glow);
+  }
+  .text-gradient {
+    background: var(--gradient-pastel);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-pastel { background: var(--gradient-pastel); }
+  .shadow-soft { box-shadow: var(--shadow-soft); }
+  .shadow-pop { box-shadow: var(--shadow-pop); }
+}
