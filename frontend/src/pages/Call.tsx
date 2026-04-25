@@ -1,185 +1,445 @@
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { Mic, MicOff, Video as VideoIcon, VideoOff, PhoneOff, Hand, Smile, MessageCircle, Users, ScreenShare } from "lucide-react";
-import { FRIENDS } from "@/lib/mock";
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import { socket } from "@/socket";
+import { ArrowLeft, Mic, MicOff, Video, VideoOff, Smile, Users } from "lucide-react";
 
-const PARTICIPANTS = [
-  { id: "me", name: "You", emoji: "🦄", color: "bg-primary/30", host: true },
-  ...FRIENDS.slice(0, 4).map((f) => ({ id: f.id, name: f.name, emoji: f.emoji, color: f.color, host: false })),
-];
+const REACTIONS = ["❤️", "🔥", "👏", "😂", "😮", "🙌", "🎉"];
 
-export default function Call() {
-  const [muted, setMuted] = useState(false);
-  const [camOn, setCamOn] = useState(true);
-  const [hand, setHand] = useState(false);
-  const [spotlight, setSpotlight] = useState(PARTICIPANTS[0]);
+const ICE_SERVERS = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
 
-  const others = PARTICIPANTS.filter((p) => p.id !== spotlight.id);
-
-  return (
-    <div className="space-y-5">
-      {/* Header */}
-      <header className="glass flex flex-col gap-3 rounded-[2rem] p-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <span className="inline-flex items-center gap-2 rounded-full bg-primary/20 px-3 py-1 text-xs font-bold uppercase tracking-widest text-foreground">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-primary" /> live · webinar
-          </span>
-          <h1 className="mt-2 font-display text-3xl font-black sm:text-4xl">Friday hangout 🪩</h1>
-          <p className="text-sm text-muted-foreground">{PARTICIPANTS.length} friends · started 12 min ago</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button className="inline-flex items-center gap-2 rounded-2xl bg-card/80 px-3 py-2 text-sm font-bold hover:bg-card">
-            <Users className="h-4 w-4" /> {PARTICIPANTS.length}
-          </button>
-          <button className="inline-flex items-center gap-2 rounded-2xl bg-card/80 px-3 py-2 text-sm font-bold hover:bg-card">
-            <MessageCircle className="h-4 w-4" /> Chat
-          </button>
-        </div>
-      </header>
-
-      {/* Spotlight */}
-      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_280px]">
-        <motion.div
-          key={spotlight.id}
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="relative aspect-video overflow-hidden rounded-[2rem] shadow-pop"
-          style={{ background: "var(--gradient-pastel)" }}
-        >
-          {/* floating decoration */}
-          <div className="absolute inset-0 opacity-60">
-            <div className="absolute left-10 top-10 h-32 w-32 rounded-full bg-card/40 blur-2xl animate-blob" />
-            <div className="absolute right-16 bottom-10 h-40 w-40 rounded-full bg-card/40 blur-3xl animate-blob" style={{ animationDelay: "2s" }} />
-          </div>
-
-          <div className="relative grid h-full place-items-center">
-            <motion.span
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="grid h-40 w-40 place-items-center rounded-[2rem] bg-card/80 text-7xl shadow-pop sm:h-48 sm:w-48 sm:text-8xl"
-            >
-              {spotlight.emoji}
-            </motion.span>
-          </div>
-
-          {/* Bottom bar in tile */}
-          <div className="absolute inset-x-4 bottom-4 flex items-center justify-between">
-            <span className="rounded-full bg-background/70 px-3 py-1.5 text-sm font-bold backdrop-blur">
-              {spotlight.name} {spotlight.host && "· host"}
-            </span>
-            <div className="flex gap-1.5">
-              {muted && spotlight.id === "me" && (
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-destructive text-destructive-foreground">
-                  <MicOff className="h-4 w-4" />
-                </span>
-              )}
-              {hand && spotlight.id === "me" && (
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-butter text-butter-foreground">✋</span>
-              )}
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Side tiles */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
-          {others.map((p, i) => (
-            <motion.button
-              key={p.id}
-              onClick={() => setSpotlight(p)}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
-              whileHover={{ y: -4 }}
-              className={`relative aspect-video overflow-hidden rounded-3xl shadow-soft ${p.color}`}
-            >
-              <div className="grid h-full place-items-center">
-                <motion.span
-                  animate={{ y: [0, -6, 0] }}
-                  transition={{ duration: 3 + i * 0.4, repeat: Infinity, ease: "easeInOut" }}
-                  className="text-5xl"
-                >
-                  {p.emoji}
-                </motion.span>
-              </div>
-              <span className="absolute inset-x-2 bottom-2 truncate rounded-full bg-background/80 px-2.5 py-1 text-xs font-bold backdrop-blur">
-                {p.name}
-              </span>
-            </motion.button>
-          ))}
-        </div>
-      </section>
-
-      {/* Reactions strip */}
-      <section className="glass flex flex-wrap items-center justify-center gap-2 rounded-full px-4 py-2 text-2xl">
-        {["❤️", "😂", "🎉", "👏", "🔥", "🦋", "✨", "🥹"].map((e) => (
-          <motion.button
-            key={e}
-            whileHover={{ y: -6, scale: 1.15 }}
-            whileTap={{ scale: 0.9 }}
-            className="rounded-full px-2 py-1 hover:bg-card/70"
-          >
-            {e}
-          </motion.button>
-        ))}
-      </section>
-
-      {/* Controls */}
-      <section className="glass sticky bottom-20 z-30 mx-auto flex max-w-2xl items-center justify-center gap-2 rounded-full p-2 lg:bottom-4">
-        <ControlBtn
-          active={!muted}
-          onClick={() => setMuted((m) => !m)}
-          label={muted ? "Unmute" : "Mute"}
-          icon={muted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-        />
-        <ControlBtn
-          active={camOn}
-          onClick={() => setCamOn((c) => !c)}
-          label={camOn ? "Stop video" : "Start video"}
-          icon={camOn ? <VideoIcon className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
-        />
-        <ControlBtn
-          active={hand}
-          onClick={() => setHand((h) => !h)}
-          label="Raise hand"
-          icon={<Hand className="h-5 w-5" />}
-        />
-        <ControlBtn label="React" icon={<Smile className="h-5 w-5" />} />
-        <ControlBtn label="Share" icon={<ScreenShare className="h-5 w-5" />} />
-        <Link
-          to="/"
-          className="ml-1 inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold text-destructive-foreground shadow-pop transition-transform hover:-translate-y-0.5"
-          style={{ background: "hsl(var(--destructive))" }}
-          aria-label="Leave call"
-        >
-          <PhoneOff className="h-4 w-4" /> Leave
-        </Link>
-      </section>
-    </div>
-  );
+interface RemotePeer {
+  socketId: string;
+  username: string;
+  stream: MediaStream | null;
 }
 
-function ControlBtn({
-  icon,
-  label,
-  active = true,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick?: () => void;
-}) {
+export default function Call() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+
+  const [username, setUsername] = useState("Saitejasri");
+  const [roomCode, setRoomCode] = useState(searchParams.get("roomId") || "");
+  const [isJoined, setIsJoined] = useState(false);
+  const [error, setError] = useState("");
+  const [isMicOn, setIsMicOn] = useState(true);
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [showReactions, setShowReactions] = useState(false);
+  const [remotePeers, setRemotePeers] = useState<RemotePeer[]>([]);
+
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+
+  // Map of socketId -> RTCPeerConnection
+  const peerConnections = useRef<Record<string, RTCPeerConnection>>({});
+  // Map of socketId -> video element
+  const remoteVideoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  // ─── Attach local stream to video element after DOM mounts ───
+  useEffect(() => {
+    if (localStream && localVideoRef.current) {
+      localVideoRef.current.srcObject = localStream;
+      localVideoRef.current.play().catch(console.error);
+    }
+  }, [localStream, isJoined]);
+
+  // ─── Create RTCPeerConnection for a remote peer ───
+  const createPeerConnection = useCallback(
+    (remoteSocketId: string, remoteUsername: string) => {
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+
+      // Add all local tracks to this connection
+      localStreamRef.current?.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+
+      // When remote track arrives, attach stream to that peer
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        setRemotePeers((prev) =>
+          prev.map((p) =>
+            p.socketId === remoteSocketId ? { ...p, stream: remoteStream } : p
+          )
+        );
+      };
+
+      // Send ICE candidates through the socket signaling server
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("ice-candidate", {
+            to: remoteSocketId,
+            candidate: event.candidate,
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        console.log(`[WebRTC] Peer ${remoteSocketId} state:`, pc.connectionState);
+      };
+
+      peerConnections.current[remoteSocketId] = pc;
+      return pc;
+    },
+    []
+  );
+
+  // ─── Socket signaling events ───
+  useEffect(() => {
+    if (!isJoined) return;
+
+    // A new user joined — existing users send them an offer
+    const handleUserJoined = async ({
+      socketId,
+      username: remoteUsername,
+    }: {
+      socketId: string;
+      username: string;
+    }) => {
+      console.log("[Socket] user-joined:", remoteUsername, socketId);
+
+      setRemotePeers((prev) => {
+        if (prev.find((p) => p.socketId === socketId)) return prev;
+        return [...prev, { socketId, username: remoteUsername, stream: null }];
+      });
+
+      const pc = createPeerConnection(socketId, remoteUsername);
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      socket.emit("offer", { to: socketId, offer, username });
+    };
+
+    // We received an offer — send back an answer
+    const handleOffer = async ({
+      from,
+      offer,
+      username: remoteUsername,
+    }: {
+      from: string;
+      offer: RTCSessionDescriptionInit;
+      username: string;
+    }) => {
+      console.log("[Socket] offer from:", remoteUsername);
+
+      setRemotePeers((prev) => {
+        if (prev.find((p) => p.socketId === from)) return prev;
+        return [...prev, { socketId: from, username: remoteUsername, stream: null }];
+      });
+
+      const pc = createPeerConnection(from, remoteUsername);
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      socket.emit("answer", { to: from, answer });
+    };
+
+    // We received an answer to our offer
+    const handleAnswer = async ({
+      from,
+      answer,
+    }: {
+      from: string;
+      answer: RTCSessionDescriptionInit;
+    }) => {
+      console.log("[Socket] answer from:", from);
+      const pc = peerConnections.current[from];
+      if (pc) await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    };
+
+    // ICE candidate from a peer
+    const handleIceCandidate = async ({
+      from,
+      candidate,
+    }: {
+      from: string;
+      candidate: RTCIceCandidateInit;
+    }) => {
+      const pc = peerConnections.current[from];
+      if (pc) await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    };
+
+    // A user left the room
+    const handleUserLeft = ({ socketId }: { socketId: string }) => {
+      console.log("[Socket] user-left:", socketId);
+      peerConnections.current[socketId]?.close();
+      delete peerConnections.current[socketId];
+      setRemotePeers((prev) => prev.filter((p) => p.socketId !== socketId));
+    };
+
+    socket.on("user-joined", handleUserJoined);
+    socket.on("offer", handleOffer);
+    socket.on("answer", handleAnswer);
+    socket.on("ice-candidate", handleIceCandidate);
+    socket.on("user-left", handleUserLeft);
+
+    return () => {
+      socket.off("user-joined", handleUserJoined);
+      socket.off("offer", handleOffer);
+      socket.off("answer", handleAnswer);
+      socket.off("ice-candidate", handleIceCandidate);
+      socket.off("user-left", handleUserLeft);
+    };
+  }, [isJoined, createPeerConnection]);
+
+  // ─── Join webinar ───
+  const joinWebinar = async () => {
+    const code = roomCode.trim();
+    if (!code) {
+      setError("Please enter Room Code");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true,
+      });
+
+      localStreamRef.current = stream;
+      setLocalStream(stream);
+
+      socket.connect();
+      socket.emit("join-room", { roomId: code, username });
+
+      setIsJoined(true);
+      setError("");
+      setSearchParams({ roomId: code });
+    } catch (err: any) {
+      console.error("Camera error:", err);
+      setError("Failed to access camera. Please allow permission.");
+    }
+  };
+
+  const toggleMic = () => {
+    if (localStreamRef.current) {
+      const track = localStreamRef.current.getAudioTracks()[0];
+      if (track) track.enabled = !isMicOn;
+      setIsMicOn((prev) => !prev);
+    }
+  };
+
+  const toggleVideo = () => {
+    if (localStreamRef.current) {
+      const track = localStreamRef.current.getVideoTracks()[0];
+      if (track) track.enabled = !isVideoOn;
+      setIsVideoOn((prev) => !prev);
+    }
+  };
+
+  const leaveCall = () => {
+    localStreamRef.current?.getTracks().forEach((track) => track.stop());
+    Object.values(peerConnections.current).forEach((pc) => pc.close());
+    peerConnections.current = {};
+    setLocalStream(null);
+    setRemotePeers([]);
+    socket.emit("leave-room");
+    navigate("/chat");
+  };
+
+  const sendReaction = (emoji: string) => {
+    socket.emit("reaction", { roomId: roomCode, emoji });
+    setShowReactions(false);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      localStreamRef.current?.getTracks().forEach((track) => track.stop());
+      Object.values(peerConnections.current).forEach((pc) => pc.close());
+    };
+  }, []);
+
+  const totalUsers = 1 + remotePeers.length;
+
   return (
-    <button
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      className={`grid h-12 w-12 place-items-center rounded-full transition-all hover:-translate-y-0.5 ${
-        active ? "bg-card/80 text-foreground hover:bg-card" : "bg-destructive/15 text-destructive"
-      }`}
-    >
-      {icon}
-    </button>
+    <div className="min-h-screen bg-gradient-to-br from-[#fdf4ff] via-[#f3e8ff] to-[#e0f2fe] flex flex-col">
+      {/* Header */}
+      <div className="h-16 border-b border-white/60 flex items-center px-6 justify-between bg-white/70 backdrop-blur-md">
+        <button
+          onClick={leaveCall}
+          className="flex items-center gap-2 text-red-500 hover:text-red-600"
+        >
+          <ArrowLeft size={24} /> Leave Webinar
+        </button>
+        <div className="font-semibold text-xl text-gray-800">Webinar Room</div>
+        {/* Shows real connected user count */}
+        <div className="flex items-center gap-2 text-emerald-500">
+          <Users size={20} /> {totalUsers}
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-4 bg-red-100 text-red-600 text-center">{error}</div>
+      )}
+
+      {!isJoined ? (
+        /* Room Entry Screen */
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="bg-white rounded-3xl shadow-xl p-10 w-full max-w-md text-center">
+            <h2 className="text-4xl font-bold text-gray-900 mb-2">
+              Join Video Webinar
+            </h2>
+            <p className="text-gray-500 mb-8">Study together with friends</p>
+
+            <div className="space-y-5">
+              <input
+                type="text"
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value)}
+                placeholder="Enter Room ID (e.g. a0c5f1ec)"
+                className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-violet-400 text-lg"
+              />
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Your Name"
+                className="w-full px-5 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:border-violet-400 text-lg"
+              />
+              <button
+                onClick={joinWebinar}
+                className="w-full py-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white rounded-2xl font-bold text-lg hover:scale-[1.02] transition-all shadow-lg"
+              >
+                Join Webinar
+              </button>
+            </div>
+
+            <p className="text-gray-400 text-sm mt-6">
+              Ask your friend to share the Room ID
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* Video Grid — auto layout based on number of participants */
+        <div className="flex-1 p-6 flex flex-col">
+          <div
+            className={`flex-1 grid gap-4 ${
+              totalUsers === 1
+                ? "grid-cols-1 place-items-center"
+                : totalUsers === 2
+                ? "grid-cols-2"
+                : "grid-cols-2"
+            }`}
+          >
+            {/* Local video tile */}
+            <div className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/20">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+              {!isVideoOn && (
+                <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+                  <div className="w-20 h-20 rounded-full bg-gray-700 flex items-center justify-center text-white text-3xl font-bold">
+                    {username.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+              )}
+              <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-4 py-2 rounded-xl text-white text-sm font-medium flex items-center gap-2">
+                You ({username})
+                <span className="w-2.5 h-2.5 bg-green-400 rounded-full animate-pulse" />
+              </div>
+            </div>
+
+            {/* Remote video tiles */}
+            {remotePeers.map((peer) => (
+              <div
+                key={peer.socketId}
+                className="relative w-full aspect-video bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/20"
+              >
+                {peer.stream ? (
+                  <video
+                    autoPlay
+                    playsInline
+                    ref={(el) => {
+                      remoteVideoRefs.current[peer.socketId] = el;
+                      if (el && peer.stream && el.srcObject !== peer.stream) {
+                        el.srcObject = peer.stream;
+                        el.play().catch(console.error);
+                      }
+                    }}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 bg-gray-900 flex flex-col items-center justify-center gap-3">
+                    <div className="w-20 h-20 rounded-full bg-violet-700 flex items-center justify-center text-white text-3xl font-bold">
+                      {peer.username.charAt(0).toUpperCase()}
+                    </div>
+                    <p className="text-gray-400 text-sm">Connecting...</p>
+                  </div>
+                )}
+                <div className="absolute bottom-4 left-4 bg-black/70 backdrop-blur-md px-4 py-2 rounded-xl text-white text-sm font-medium">
+                  {peer.username}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {remotePeers.length === 0 && (
+            <p className="text-center text-gray-500 mt-6">
+              Waiting for friends to join the webinar...
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Bottom Controls */}
+      {isJoined && (
+        <div className="h-20 bg-white/90 backdrop-blur-xl border-t border-gray-200 flex items-center justify-center gap-8">
+          <button
+            onClick={toggleMic}
+            className={`p-5 rounded-2xl transition-all ${
+              isMicOn ? "bg-gray-100 hover:bg-gray-200" : "bg-red-500 text-white"
+            }`}
+          >
+            {isMicOn ? <Mic size={28} /> : <MicOff size={28} />}
+          </button>
+
+          <button
+            onClick={toggleVideo}
+            className={`p-5 rounded-2xl transition-all ${
+              isVideoOn ? "bg-gray-100 hover:bg-gray-200" : "bg-red-500 text-white"
+            }`}
+          >
+            {isVideoOn ? <Video size={28} /> : <VideoOff size={28} />}
+          </button>
+
+          <button
+            onClick={() => setShowReactions(!showReactions)}
+            className="p-5 rounded-2xl bg-gray-100 hover:bg-gray-200 transition"
+          >
+            <Smile size={28} />
+          </button>
+
+          <button
+            onClick={leaveCall}
+            className="px-10 py-3.5 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-lg transition"
+          >
+            End Webinar
+          </button>
+        </div>
+      )}
+
+      {/* Reactions panel */}
+      {showReactions && isJoined && (
+        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 flex gap-4 bg-white/90 backdrop-blur-2xl p-4 rounded-3xl shadow-xl border border-white">
+          {REACTIONS.map((emoji, i) => (
+            <button
+              key={i}
+              onClick={() => sendReaction(emoji)}
+              className="text-5xl hover:scale-125 transition"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
