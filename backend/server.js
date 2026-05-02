@@ -15,16 +15,15 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// ====================== CORS SETUP (Important for Vite) ======================
 app.use(cors({
-  origin: ["http://localhost:8080","http://localhost:5173", "http://localhost:3000", "*"], // Vite default port + others
+  origin: ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000"],
   methods: ["GET", "POST", "OPTIONS"],
   credentials: true
 }));
 
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:8080","http://localhost:5173", "http://localhost:3000", "*"],
+    origin: ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000", "*"],
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -32,11 +31,9 @@ const io = new Server(server, {
 
 app.use(express.json());
 
-// ====================== FILE UPLOAD SETUP ======================
+// ====================== FILE UPLOAD ======================
 const uploadDir = 'uploads/';
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -47,18 +44,15 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({
-  storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|pdf|doc|docx|txt|ppt|pptx/;
-    const extname = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowed.test(file.mimetype);
-    if (extname && mimetype) return cb(null, true);
+    if (allowed.test(path.extname(file.originalname).toLowerCase())) return cb(null, true);
     cb(new Error('Only images, PDFs, and documents are allowed!'));
   }
 });
 
-// Serve uploaded files
 app.use('/uploads', express.static(uploadDir));
 
 // ====================== DATABASE ======================
@@ -76,84 +70,91 @@ const TaskSchema = new mongoose.Schema({
 });
 const Task = mongoose.model('Task', TaskSchema);
 
-// ====================== IN-MEMORY STORAGE ======================
-const rooms = new Map();        // roomId → { users: Map<socketId, username> }
-const userRooms = new Map();    // socketId → roomId
+// ====================== IN-MEMORY ======================
+const rooms = new Map();     // roomId → Map<socketId, username>
+const userRooms = new Map(); // socketId → roomId
 
-// ====================== SOCKET.IO LOGIC ======================
+// ====================== SOCKET.IO ======================
 io.on('connection', (socket) => {
-  console.log(`🔌 User connected: ${socket.id}`);
+  console.log(`🔌 Connected: ${socket.id}`);
 
-  // Create Room
+  // ── Create Room (from chat/dashboard) ──
   socket.on('create-room', ({ username }) => {
     const roomId = uuidv4().slice(0, 8);
-    rooms.set(roomId, { users: new Map() });
+    rooms.set(roomId, new Map());
     socket.emit('room-created', { roomId });
     console.log(`📌 Room created: ${roomId} by ${username}`);
   });
 
-  // Join Room
+  // ── Join Room ──
   socket.on('join-room', ({ roomId, username }) => {
-    const room = rooms.get(roomId);
-    if (!room) {
-      return socket.emit('error', { message: 'Room does not exist' });
+    // ✅ Auto-create room if it doesn't exist yet
+    // This handles the case where user types a room ID directly
+    // without going through create-room first
+    if (!rooms.has(roomId)) {
+      rooms.set(roomId, new Map());
+      console.log(`📌 Room auto-created: ${roomId}`);
     }
+
+    const room = rooms.get(roomId);
 
     socket.join(roomId);
     userRooms.set(socket.id, roomId);
-    room.users.set(socket.id, username);
 
-    const usersInRoom = Array.from(room.users.entries()).map(([id, name]) => ({
+    // ✅ Build existing users list BEFORE adding the new joiner
+    const existingUsers = Array.from(room.entries()).map(([id, name]) => ({
       socketId: id,
-      username: name
+      username: name,
     }));
 
-    // Notify others
-    io.to(roomId).emit('user-joined', { socketId: socket.id, username });
-    // Send current users to new user
-    socket.emit('all-users', usersInRoom);
+    console.log(`📋 Room ${roomId} existing users:`, existingUsers.map(u => u.username));
 
-    console.log(`👥 ${username} joined room ${roomId}`);
+    // ✅ Send existing users to NEW joiner only (they send offers to each)
+    socket.emit('all-users', existingUsers);
+
+    // ✅ Tell EXISTING users someone new joined (socket.to = everyone except sender)
+    socket.to(roomId).emit('user-joined', { socketId: socket.id, username });
+
+    // ✅ Now add new user to room
+    room.set(socket.id, username);
+
+    console.log(`👥 ${username} (${socket.id}) joined room ${roomId} | Total: ${room.size}`);
   });
 
-  // Chat Message
+  // ── Chat ──
   socket.on('chat-message', ({ roomId, message, username }) => {
     if (!rooms.has(roomId)) return;
     io.to(roomId).emit('chat-message', {
-      username,
-      message,
-      timestamp: Date.now(),
-      socketId: socket.id
+      username, message, timestamp: Date.now(), socketId: socket.id
     });
   });
 
-  // WebRTC Signaling for Video Call
-  socket.on('offer', ({ targetSocketId, offer }) => {
-    io.to(targetSocketId).emit('offer', { offer, from: socket.id });
+  // ── WebRTC Signaling ──
+  socket.on('offer', ({ targetSocketId, offer, username }) => {
+    console.log(`📡 offer: ${socket.id} → ${targetSocketId}`);
+    io.to(targetSocketId).emit('offer', {
+      from: socket.id,
+      offer,
+      username: username || getUsernameFor(socket.id),
+    });
   });
 
   socket.on('answer', ({ targetSocketId, answer }) => {
-    io.to(targetSocketId).emit('answer', { answer, from: socket.id });
+    console.log(`📡 answer: ${socket.id} → ${targetSocketId}`);
+    io.to(targetSocketId).emit('answer', { from: socket.id, answer });
   });
 
   socket.on('ice-candidate', ({ targetSocketId, candidate }) => {
-    io.to(targetSocketId).emit('ice-candidate', { candidate, from: socket.id });
+    io.to(targetSocketId).emit('ice-candidate', { from: socket.id, candidate });
   });
 
-  // Tasks
+  // ── Tasks ──
   socket.on('create-task', async ({ userId, roomId, title, deadline }) => {
     try {
       const task = new Task({ userId, roomId, title, deadline });
       await task.save();
-      io.to(roomId).emit('new-task', {
-        taskId: task._id,
-        title,
-        deadline,
-        userId
-      });
-    } catch (err) {
-      console.error("Error creating task:", err);
-    }
+      io.to(roomId).emit('new-task', { taskId: task._id, title, deadline, userId });
+    } catch (err) { console.error("Task error:", err); }
   });
 
   socket.on('update-task', async ({ taskId, completed }) => {
@@ -164,44 +165,51 @@ io.on('connection', (socket) => {
         await task.save();
         io.to(task.userId).emit('task-updated', { taskId, completed });
       }
-    } catch (err) {
-      console.error("Error updating task:", err);
-    }
+    } catch (err) { console.error("Task update error:", err); }
   });
 
-  // Disconnect
+  // ── Leave ──
+  socket.on('leave-room', () => handleLeave(socket));
   socket.on('disconnect', () => {
-    const roomId = userRooms.get(socket.id);
-    if (roomId && rooms.has(roomId)) {
-      const room = rooms.get(roomId);
-      const username = room.users.get(socket.id);
-
-      room.users.delete(socket.id);
-      io.to(roomId).emit('user-left', { socketId: socket.id, username });
-
-      if (room.users.size === 0) {
-        rooms.delete(roomId);
-        console.log(`🗑️ Room ${roomId} deleted (empty)`);
-      }
-    }
-    userRooms.delete(socket.id);
-    console.log(`❌ User disconnected: ${socket.id}`);
+    handleLeave(socket);
+    console.log(`❌ Disconnected: ${socket.id}`);
   });
 });
 
+function getUsernameFor(socketId) {
+  const roomId = userRooms.get(socketId);
+  if (roomId && rooms.has(roomId)) return rooms.get(roomId).get(socketId) || 'Unknown';
+  return 'Unknown';
+}
+
+function handleLeave(socket) {
+  const roomId = userRooms.get(socket.id);
+  if (!roomId || !rooms.has(roomId)) return;
+
+  const room = rooms.get(roomId);
+  const username = room.get(socket.id) || 'Someone';
+
+  room.delete(socket.id);
+  userRooms.delete(socket.id);
+
+  socket.to(roomId).emit('user-left', { socketId: socket.id, username });
+  socket.leave(roomId);
+
+  if (room.size === 0) {
+    rooms.delete(roomId);
+    console.log(`🗑️ Room ${roomId} deleted (empty)`);
+  }
+
+  console.log(`🚪 ${username} (${socket.id}) left room ${roomId}`);
+}
+
 // ====================== FILE UPLOAD ROUTE ======================
 app.post('/upload', upload.single('file'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ message: 'No file uploaded' });
-  }
-
+  if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   const { roomId, username } = req.body;
-  if (!roomId) {
-    return res.status(400).json({ message: 'roomId is required' });
-  }
+  if (!roomId) return res.status(400).json({ message: 'roomId is required' });
 
   const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-
   io.to(roomId).emit('file-shared', {
     username: username || 'Someone',
     fileName: req.file.originalname,
@@ -210,22 +218,14 @@ app.post('/upload', upload.single('file'), (req, res) => {
     timestamp: Date.now()
   });
 
-  res.json({
-    success: true,
-    fileUrl,
-    fileName: req.file.originalname
-  });
+  res.json({ success: true, fileUrl, fileName: req.file.originalname });
 });
 
-// ====================== TASK REMINDER (Every Minute) ======================
+// ====================== TASK REMINDERS ======================
 cron.schedule('* * * * *', async () => {
   const now = new Date();
-  const overdueTasks = await Task.find({
-    completed: false,
-    deadline: { $lt: now }
-  });
-
-  for (const task of overdueTasks) {
+  const overdue = await Task.find({ completed: false, deadline: { $lt: now } });
+  for (const task of overdue) {
     io.to(task.userId).emit('task-reminder', {
       taskId: task._id,
       title: task.title,
@@ -236,6 +236,5 @@ cron.schedule('* * * * *', async () => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🚀 StudyTogether Backend running on http://localhost:${PORT}`);
-  console.log(`✅ CORS allowed for http://localhost:5173`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
